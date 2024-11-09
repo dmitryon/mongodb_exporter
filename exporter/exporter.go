@@ -250,7 +250,7 @@ func (e *Exporter) makeRegistry(ctx context.Context, client *mongo.Client, topol
 		registry.MustRegister(fcvc)
 	}
 
-	if e.opts.EnablePBMMetrics && requestOpts.EnablePBMMetrics {
+	if e.opts.EnablePBMMetrics && requestOpts.EnablePBMMetrics && dbBuildInfo.Edition != DocumentDbEdition {
 		pbmc := newPbmCollector(ctx, client, e.opts.URI, e.opts.Logger)
 		registry.MustRegister(pbmc)
 	}
