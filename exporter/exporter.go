@@ -199,7 +199,8 @@ func (e *Exporter) makeRegistry(ctx context.Context, client *mongo.Client, topol
 	if (len(e.opts.IndexStatsCollections) > 0 || e.opts.DiscoveringMode) && e.opts.EnableIndexStats && limitsOk && requestOpts.EnableIndexStats {
 		ic := newIndexStatsCollector(ctx, client, e.opts.Logger,
 			e.opts.DiscoveringMode, e.opts.EnableOverrideDescendingIndex,
-			topologyInfo, e.opts.IndexStatsCollections)
+			topologyInfo, e.opts.IndexStatsCollections,
+			dbBuildInfo.Edition == DocumentDbEdition)
 		registry.MustRegister(ic)
 	}
 

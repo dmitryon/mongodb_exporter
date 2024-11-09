@@ -64,7 +64,7 @@ func TestIndexStatsCollector(t *testing.T) {
 	}
 
 	collection := []string{"testdb.testcol_00", "testdb.testcol_01", "testdb.testcol_02"}
-	c := newIndexStatsCollector(ctx, client, logrus.New(), false, true, ti, collection)
+	c := newIndexStatsCollector(ctx, client, logrus.New(), false, true, ti, collection, false)
 
 	// The last \n at the end of this string is important
 	expected := strings.NewReader(`
@@ -114,7 +114,7 @@ func TestDescendingIndexOverride(t *testing.T) {
 	}
 
 	collection := []string{"testdb.testcol_00", "testdb.testcol_01", "testdb.testcol_02"}
-	c := newIndexStatsCollector(ctx, client, logrus.New(), false, true, ti, collection)
+	c := newIndexStatsCollector(ctx, client, logrus.New(), false, true, ti, collection, false)
 
 	// The last \n at the end of this string is important
 	expected := strings.NewReader(`
