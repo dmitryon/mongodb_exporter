@@ -245,7 +245,7 @@ func (e *Exporter) makeRegistry(ctx context.Context, client *mongo.Client, topol
 		registry.MustRegister(sc)
 	}
 
-	if e.opts.EnableFCV && nodeType != typeMongos {
+	if e.opts.EnableFCV && nodeType != typeMongos && dbBuildInfo.Edition != DocumentDbEdition {
 		fcvc := newFeatureCompatibilityCollector(ctx, client, e.opts.Logger)
 		registry.MustRegister(fcvc)
 	}
