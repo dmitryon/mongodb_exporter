@@ -52,11 +52,15 @@ const (
 	EnterpriseEdition = "Enterprise"
 	// CommunityEdition shows that MongoDB is Community edition.
 	CommunityEdition = "Community"
+	// DocumentDbEdition is partially compatible implementation of MongoDB in AWS.
+	DocumentDbEdition = "DocumentDB"
 
 	// PerconaVendor means that MongoDB provided by Percona.
 	PerconaVendor = "Percona"
 	// MongoDBVendor means that MongoDB provided by Mongo.
 	MongoDBVendor = "MongoDB"
+	// AmazonVendor means that DocumentDB is provided by Amazon AWS.
+	AmazonVendor = "Amazon"
 )
 
 // ErrInvalidMetricValue cannot create a new metric due to an invalid value.
@@ -866,15 +870,19 @@ func retrieveMongoDBBuildInfo(ctx context.Context, client *mongo.Client, l *logr
 
 	if len(buildInfoDoc.Modules) > 0 && buildInfoDoc.Modules[0] == "enterprise" {
 		buildInfoDoc.Edition = EnterpriseEdition
-	} else {
+	} else if len(buildInfoDoc.StorageEngines) > 0 {
 		buildInfoDoc.Edition = CommunityEdition
+	} else {
+		buildInfoDoc.Edition = DocumentDbEdition
 	}
 	l.Debug("MongoDB edition: ", buildInfoDoc.Edition)
 
 	if buildInfoDoc.PSMDBVersion != "" {
 		buildInfoDoc.Vendor = PerconaVendor
-	} else {
+	} else if buildInfoDoc.Edition != DocumentDbEdition {
 		buildInfoDoc.Vendor = MongoDBVendor
+	} else {
+		buildInfoDoc.Vendor = AmazonVendor
 	}
 
 	return buildInfoDoc, nil
@@ -1336,12 +1344,13 @@ type rawStatus struct {
 }
 
 type buildInfo struct {
-	Version      string `bson:"version"`
-	PSMDBVersion string `bson:"psmdbVersion"`
-	VersionArray []int  `bson:"versionArray"`
-	Edition      string
-	Vendor       string
-	Modules      []string `bson:"modules"`
+	Version        string `bson:"version"`
+	PSMDBVersion   string `bson:"psmdbVersion"`
+	VersionArray   []int  `bson:"versionArray"`
+	Edition        string
+	Vendor         string
+	Modules        []string `bson:"modules"`
+	StorageEngines []string `bson:"storageEngines"`
 }
 
 func getDatabaseStatList(ctx context.Context, client *mongo.Client, l *logrus.Entry) *databaseStatList {

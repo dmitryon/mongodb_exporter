@@ -190,7 +190,8 @@ func (e *Exporter) makeRegistry(ctx context.Context, client *mongo.Client, topol
 	if (len(e.opts.CollStatsNamespaces) > 0 || e.opts.DiscoveringMode) && e.opts.EnableCollStats && limitsOk && requestOpts.EnableCollStats {
 		cc := newCollectionStatsCollector(ctx, client, e.opts.Logger,
 			e.opts.CompatibleMode, e.opts.DiscoveringMode,
-			topologyInfo, e.opts.CollStatsNamespaces)
+			topologyInfo, e.opts.CollStatsNamespaces,
+			dbBuildInfo.Edition == DocumentDbEdition)
 		registry.MustRegister(cc)
 	}
 

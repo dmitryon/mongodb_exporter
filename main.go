@@ -138,11 +138,30 @@ func main() {
 	exporter.RunWebServer(serverOpts, buildServers(opts, log), log)
 }
 
+func escapePasswordInUri(s string) string {
+	replacements := map[rune]string{
+		'$': "%24",
+		'^': "%5E",
+		'*': "%2A",
+		'(': "%28",
+		')': "%29",
+	}
+	for c, replacement := range replacements {
+		s = strings.ReplaceAll(s, string(c), replacement)
+	}
+	return s
+}
+
 func buildExporter(opts GlobalFlags, uri string, log *logrus.Logger) *exporter.Exporter {
 	uri = buildURI(uri, opts.User, opts.Password, log)
 	log.Debugf("Connection URI: %s", uri)
 
-	uriParsed, _ := url.Parse(uri)
+	uri = escapePasswordInUri(uri)
+	uriParsed, err := url.Parse(uri)
+	if err != nil {
+		log.Errorf("Error parsing URI: %s", err.Error())
+		return nil
+	}
 	var nodeName string
 	if uriParsed.Port() != "" {
 		nodeName = net.JoinHostPort(uriParsed.Hostname(), uriParsed.Port())

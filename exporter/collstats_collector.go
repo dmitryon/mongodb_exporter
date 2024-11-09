@@ -34,10 +34,12 @@ type collstatsCollector struct {
 	topologyInfo    labelsGetter
 
 	collections []string
+
+	documentDbCompatible bool
 }
 
 // newCollectionStatsCollector creates a collector for statistics about collections.
-func newCollectionStatsCollector(ctx context.Context, client *mongo.Client, logger *logrus.Logger, compatible, discovery bool, topology labelsGetter, collections []string) *collstatsCollector {
+func newCollectionStatsCollector(ctx context.Context, client *mongo.Client, logger *logrus.Logger, compatible, discovery bool, topology labelsGetter, collections []string, documentDbCompatible bool) *collstatsCollector {
 	return &collstatsCollector{
 		ctx:  ctx,
 		base: newBaseCollector(client, logger.WithFields(logrus.Fields{"collector": "collstats"})),
@@ -47,6 +49,8 @@ func newCollectionStatsCollector(ctx context.Context, client *mongo.Client, logg
 		topologyInfo:    topology,
 
 		collections: collections,
+
+		documentDbCompatible: documentDbCompatible,
 	}
 }
 
@@ -97,39 +101,81 @@ func (d *collstatsCollector) collect(ch chan<- prometheus.Metric) {
 			continue
 		}
 
-		aggregation := bson.D{
-			{
-				Key: "$collStats", Value: bson.M{
-					// TODO: PMM-9568 : Add support to handle histogram metrics
-					"latencyStats": bson.M{"histograms": false},
-					"storageStats": bson.M{"scale": 1},
-				},
-			},
-		}
-		project := bson.D{
-			{
-				Key: "$project", Value: bson.M{
-					"storageStats.wiredTiger":   0,
-					"storageStats.indexDetails": 0,
-				},
-			},
-		}
-
-		cursor, err := client.Database(database).Collection(collection).Aggregate(d.ctx, mongo.Pipeline{aggregation, project})
-		if err != nil {
-			logger.Errorf("cannot get $collstats cursor for collection %s.%s: %s", database, collection, err)
-
-			continue
-		}
-
 		var stats []bson.M
-		if err = cursor.All(d.ctx, &stats); err != nil {
-			logger.Errorf("cannot get $collstats for collection %s.%s: %s", database, collection, err)
+		if d.documentDbCompatible {
+			db := client.Database(database)
+			result := db.RunCommand(d.ctx, bson.M{"collStats": collection})
+			if result.Err() != nil {
+				logger.Errorf("cannot execute collStats for collection %s.%s: %s", database, collection, result.Err())
 
-			continue
+				continue
+			}
+
+			var doc bson.M
+			if result.Decode(&doc) != nil {
+				logger.Errorf("cannot decode collStats for collection %s.%s: %s", database, collection, result.Err())
+
+				continue
+			}
+
+			mongodbCompatibleCollStats := removeNilValues(bson.M{
+				"ns": doc["ns"],
+				"storageStats": bson.M{
+					"avgObjSize":     doc["avgObjSize"],
+					"count":          doc["count"],
+					"size":           doc["size"],
+					"storageSize":    doc["storageSize"],
+					"capped":         doc["capped"],
+					"nindexes":       doc["nindexes"],
+					"totalIndexSize": doc["totalIndexSize"],
+					"indexSizes":     doc["indexSizes"],
+				},
+				"compression": doc["compression"],
+				"collScans":   doc["collScans"],
+				"idxScans":    doc["idxScans"],
+				"opCounter":   doc["opCounter"],
+				"cacheStats":  doc["cacheStats"],
+			})
+
+			stats = append(
+				stats,
+				mongodbCompatibleCollStats,
+			)
+
+			logger.Debugf("collStats metrics for %s.%s", database, collection)
+		} else {
+			aggregation := bson.D{
+				{
+					Key: "$collStats", Value: bson.M{
+						// TODO: PMM-9568 : Add support to handle histogram metrics
+						"latencyStats": bson.M{"histograms": false},
+						"storageStats": bson.M{"scale": 1},
+					},
+				},
+			}
+			project := bson.D{
+				{
+					Key: "$project", Value: bson.M{
+						"storageStats.wiredTiger":   0,
+						"storageStats.indexDetails": 0,
+					},
+				},
+			}
+			cursor, err := client.Database(database).Collection(collection).Aggregate(d.ctx, mongo.Pipeline{aggregation, project})
+			if err != nil {
+				logger.Errorf("cannot get $collstats cursor for collection %s.%s: %s", database, collection, err)
+
+				continue
+			}
+
+			if err = cursor.All(d.ctx, &stats); err != nil {
+				logger.Errorf("cannot get $collstats for collection %s.%s: %s", database, collection, err)
+
+				continue
+			}
+
+			logger.Debugf("$collStats metrics for %s.%s", database, collection)
 		}
-
-		logger.Debugf("$collStats metrics for %s.%s", database, collection)
 		debugResult(logger, stats)
 
 		prefix := "collstats"
@@ -147,6 +193,23 @@ func (d *collstatsCollector) collect(ch chan<- prometheus.Metric) {
 			}
 		}
 	}
+}
+
+func removeNilValues(m bson.M) bson.M {
+	filteredMap := make(bson.M)
+	for k, v := range m {
+		if v == nil {
+			continue
+		}
+
+		// process non-nil value or nested map
+		if m1, ok := v.(bson.M); ok {
+			filteredMap[k] = removeNilValues(m1)
+		} else {
+			filteredMap[k] = v
+		}
+	}
+	return filteredMap
 }
 
 var _ prometheus.Collector = (*collstatsCollector)(nil)
